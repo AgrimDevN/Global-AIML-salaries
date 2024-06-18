@@ -1,0 +1,160 @@
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import seaborn as sns
+%matplotlib inline
+
+
+df = pd.read_csv('global_ai_ml_data_salaries.csv')
+print(df.head(5))
+
+#TASK 1.1-EDA
+
+
+
+
+
+#lets first plot all possible scenarios
+print(sns.pairplot(df))
+
+print(sns.scatterplot(df,x = 'experience_level',y = 'salary_in_usd'))
+
+
+cr = df.groupby(['experience_level'])['salary_in_usd'].mean()
+
+print(sns.barplot(x = cr.index,y =cr.values))
+#INFERENCE 1-thus we can see that salary in usd is increasing when experience increases
+#now to better understand relation of varibales to salaries lets plot all such graphs
+
+
+for i in df.drop(['salary_in_usd','salary'],axis = 1).columns:
+    
+    cr = df.groupby(i)['salary_in_usd'].mean().sort_values(ascending =         False).head(10)
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x = cr.index,y =cr.values)
+    plt.tight_layout()  # Adjust the plot to ensure everything fits without overlapping
+    plt.show()
+    
+    
+    
+#ok we can clearly see the relations between the columnns and salaries column from these seaborn plots
+
+
+
+#INFERENCE 1-thus we can see that salary in usd is increasing when experience increases
+#INFERENCE 2-We can see that although the order is same,the salaries are more compared to salaries in USD (as most of the -
+#employees are from poorer economies) also ,the difference of salries between SE and MI has reduced
+#INFERENCE 3-as we can see the people working 50 percent remotely have significantly less salary
+#INFERENCE 4-There has been an increase in salary as time progress,except from 2023 to 2024 leading to lesser overall purchase power parity
+#and so on............using plots we draw inferences.
+
+
+
+#THUS, we can conclude that all columns that were plotted had a significant impact on salary,so we cant neglect any.
+#however since we are trying to predict salay in usd,we will neglect SALARY column as the loacation is enough.
+
+
+#TASK 1.2  -  Pre-processing
+
+
+
+#now pre-processing,we will use one hot encoding for few columns with non ordinal values which have very few unique values
+
+comp_size = pd.get_dummies(df['company_size'],drop_first=True)
+rem_ratio = pd.get_dummies(df['remote_ratio'],drop_first=True)
+work_y = pd.get_dummies(df['work_year'],drop_first=True)
+
+num = len(df[df['company_location']!=df['employee_residence']])
+print(num)
+
+#as num is very low(132 of 19975),99.33 percent  of the times the two columns represent same values,so we will get rid of 'employee_residence 'and 'salary currency' column as we are interested only in 'salary_in_usd'
+df.drop(['employee_residence','salary_currency','salary'],axis = 1,inplace = True) 
+
+#we will convert job title,company_location using Target encoding,in this case it gives better results than frequency encoding
+list =  ['job_title','company_location']
+for col in list:
+    df[col] = df[col].apply(lambda x: df[df[col]==x]['salary_in_usd'].mean())
+
+print(df)
+
+#columns-experience level and employement type have a ranking so we will use Ordinal Encoding-and give rank based on their index of sorted list
+exp_ranking = ['EN','MI','SE','EX']
+emp_type_ranking = ['FL','PT','CT','FT']
+
+
+df['experience_level1']=df['experience_level'].apply(lambda x: exp_ranking.index(x))
+df['employment_type1']=df['employment_type'].apply(lambda x: emp_type_ranking.index(x))
+
+df.drop(['experience_level','employment_type'],axis = 1,inplace = True)
+
+print(df)
+
+df = pd.concat([df,comp_size,rem_ratio,work_y],axis = 1)
+#this to add columns of dummy variables
+#and now removing redundant columns as boolean versions of these columns have been added
+
+
+df.drop(['company_size','remote_ratio','work_year'],axis = 1,inplace = True)
+#now we need to convert all column names to str to use train test split
+df.columns = df.columns.map(str)
+
+
+
+from sklearn.model_selection import train_test_split
+x_train,x_test,y_train,y_test = train_test_split(df.drop('salary_in_usd',axis = 1),df['salary_in_usd'],test_size=0.3,random_state=101)
+
+
+#TASK 1.3 - Implementing ML models
+
+
+
+#now we can employ our ML Regression models
+#1-Linear Regression
+from sklearn.linear_model import LinearRegression
+LinearReg = LinearRegression()
+LinearReg.fit(x_train,y_train)
+
+pred = LinearReg.predict(x_test)
+from sklearn.metrics import r2_score,mean_squared_error
+print(r2_score(y_test,pred))
+#r2_score is 0.312
+
+from sklearn.preprocessing import PolynomialFeatures
+#using polynomial linear regression
+polynomial_features = PolynomialFeatures(degree=4)
+x_poly_train = polynomial_features.fit_transform(x_train)
+x_poly_test = polynomial_features.transform(x_test)
+model = LinearRegression()
+model.fit(x_poly_train, y_train)
+y_train_pred = model.predict(x_poly_train)
+y_test_pred = model.predict(x_poly_test)
+
+# Model evaluation
+print("Train R-squared:", r2_score(y_train, y_train_pred))
+#r^2 score 0.33
+
+#model 2-Ridge Regression
+from sklearn.linear_model import Ridge
+rdeg = Ridge(alpha=0.1)
+rdeg.fit(x_train,y_train)
+#alpha = 0.1 gives best result in this case
+
+y_pred = rdeg.predict(x_test)
+
+# Evaluate the model performance
+r2_score(y_test,y_pred)
+#r2 score is 0.312
+
+from sklearn.linear_model import Lasso
+#model -3 Lasso Rgression
+lass = Lasso(alpha = 0.1)
+lass.fit(x_train,y_train)
+new_y_pred = lass.predict(x_test)
+print(r2_score(y_test,new_y_pred))
+#r2_score is 0.312
+
+#As we can see, there is not much difference in r2 score across models ,however polynomial model gives the best result of 33 %
+#meaning there is a 33 % relationship between predictor and response variables.
+#Since Ridge Regression and Lasso regression produced same accuracy in r2_score ,this means that there wasnt any overfitting and unimportant features were not used
+#However lower r2 score suggest low relation by default between predictor and response.
